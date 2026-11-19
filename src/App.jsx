@@ -106,11 +106,18 @@ export default function App() {
         const tgUser = tg?.initDataUnsafe?.user;
         const startParam = tg?.initDataUnsafe?.start_param || new URLSearchParams(window.location.search).get('startapp') || '';
 
-        // Fallback to Mubby Boi admin profile only if previewing outside Telegram
-        const telegramId = tgUser?.id || ADMIN_TELEGRAM_ID;
-        const username = tgUser?.username || 'mubbyboi';
-        const firstName = tgUser?.first_name || 'Mubby';
-        const lastName = tgUser?.last_name || 'Boi';
+                const initData = tg?.initData;
+        if (!initData || !tgUser?.id) {
+          window.location.replace('https://t.me/AllGoldenbot');
+          setLoading(false);
+          return;
+        }
+
+        const telegramId = tgUser.id;
+        const username = tgUser.username || '';
+        const firstName = tgUser.first_name || 'Member';
+        const lastName = tgUser.last_name || '';
+
 
         // Load deposit address from settings
         const { data: settingsData } = await supabase
@@ -456,6 +463,21 @@ export default function App() {
           <Crown className="w-8 h-8 text-slate-900" />
         </div>
         <p className="mt-4 font-bold tracking-widest text-amber-700 text-sm">LOADING GOLDEN...</p>
+      </div>
+    );
+  }
+  if (!user) {
+    return (
+      <div className="min-h-screen bg-[#0F1E36] text-white flex flex-col items-center justify-center p-6 text-center">
+        <Crown className="w-14 h-14 text-amber-400 mb-3" />
+        <h2 className="text-xl font-extrabold">GOLDEN Mini App</h2>
+        <p className="text-xs text-slate-300 mt-1 mb-5">This app only works inside Telegram.</p>
+        <a
+          href="https://t.me/AllGoldenbot"
+          className="px-6 py-3.5 rounded-2xl bg-amber-400 text-slate-950 font-extrabold text-sm"
+        >
+          Open in Telegram
+        </a>
       </div>
     );
   }
