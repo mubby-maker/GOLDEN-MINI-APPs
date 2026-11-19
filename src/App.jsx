@@ -19,6 +19,9 @@ import {
   Sparkles,
   AlertCircle,
   RefreshCw,
+  LogOut,
+  LogIn,
+  Megaphone,
 } from 'lucide-react';
 
 // ==========================================
@@ -30,11 +33,63 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 const ADMIN_TELEGRAM_ID = 9278551040;
 const BOT_USERNAME = 'AllGoldenbot';
+const ANNOUNCEMENTS_CHANNEL_URL = 'https://t.me/+vZZ9ko_YLB5lMGU0';
 const DEFAULT_DEPOSIT_WALLET = '0xF8354B188fAC6B6341273641de4F014921F82032';
+const SESSION_LOGGED_OUT_KEY = 'golden_logged_out_v1';
+const TEST_PROFILE_KEY = 'golden_test_profile_v1';
+
+const TEST_PROFILES = {
+  free: {
+    telegram_id: 100000001,
+    first_name: 'Test Free User',
+    username: 'test_free',
+    referral_code: 'FREE101',
+    active_plan: 'none',
+    plan_expires_at: null,
+    mining_started_at: null,
+    daily_balance: 0,
+    referral_balance: 0,
+    total_earned: 0,
+    pending_withdrawal: 0,
+    bep20_wallet: '',
+    is_mock: true,
+  },
+  normal: {
+    telegram_id: 100000002,
+    first_name: 'Test Normal User',
+    username: 'test_normal',
+    referral_code: 'NORM202',
+    active_plan: 'normal',
+    plan_expires_at: new Date(Date.now() + 25 * 24 * 60 * 60 * 1000).toISOString(),
+    mining_started_at: null,
+    daily_balance: 4.0,
+    referral_balance: 1.4,
+    total_earned: 5.4,
+    pending_withdrawal: 0,
+    bep20_wallet: '0x1111111111111111111111111111111111111111',
+    is_mock: true,
+  },
+  premium: {
+    telegram_id: 100000003,
+    first_name: 'Test Premium User',
+    username: 'test_premium',
+    referral_code: 'PREM303',
+    active_plan: 'premium',
+    plan_expires_at: new Date(Date.now() + 20 * 24 * 60 * 60 * 1000).toISOString(),
+    mining_started_at: new Date(Date.now() - 25 * 60 * 60 * 1000).toISOString(),
+    daily_balance: 12.5,
+    referral_balance: 10.5,
+    total_earned: 23.0,
+    pending_withdrawal: 5.0,
+    bep20_wallet: '0x2222222222222222222222222222222222222222',
+    is_mock: true,
+  },
+};
 
 export default function App() {
   const [activeTab, setActiveTab] = useState('home');
   const [user, setUser] = useState(null);
+  const [loggedOut, setLoggedOut] = useState(false);
   const [depositWallet, setDepositWallet] = useState(DEFAULT_DEPOSIT_WALLET);
   const [loading, setLoading] = useState(true);
   const [toast, setToast] = useState(null);
@@ -42,6 +97,7 @@ export default function App() {
   // Plan Upgrade Modal State
   const [selectedPlanModal, setSelectedPlanModal] = useState(null); // 'normal' | 'premium' | null
   const [txHashInput, setTxHashInput] = useState('');
+  const [proofImageData, setProofImageData] = useState('');
   const [submittingPlan, setSubmittingPlan] = useState(false);
 
   // Promo Code State
@@ -86,76 +142,18 @@ export default function App() {
     setTimeout(() => setCopiedKey(''), 2000);
   };
 
+  const openTelegramUrl = (url) => {
+    if (window.Telegram?.WebApp?.openTelegramLink) {
+      window.Telegram.WebApp.openTelegramLink(url);
+    } else {
+      window.open(url, '_blank', 'noopener,noreferrer');
+    }
+  };
+
   // Tick every second for live 24h Golden Coin countdown
   useEffect(() => {
     const timer = setInterval(() => setNowTs(Date.now()), 1000);
     return () => clearInterval(timer);
-  }, []);
-
-  // Initialize Telegram WebApp & Authenticate User
-  useEffect(() => {
-    const initApp = async () => {
-      try {
-        const tg = window.Telegram?.WebApp;
-        if (tg) {
-          tg.ready();
-          tg.expand();
-          tg.setHeaderColor('#F8F9FA');
-        }
-
-        const tgUser = tg?.initDataUnsafe?.user;
-        const startParam = tg?.initDataUnsafe?.start_param || new URLSearchParams(window.location.search).get('startapp') || '';
-
-        const initData = tg?.initData;
-        if (!initData || !tgUser?.id) {
-          window.location.replace('https://t.me/AllGoldenbot');
-          setLoading(false);
-          return;
-        }
-
-        const telegramId = tgUser.id;
-        const username = tgUser.username || '';
-        const firstName = tgUser.first_name || 'Member';
-        const lastName = tgUser.last_name || '';
-
-        // Load deposit address from settings
-        const { data: settingsData } = await supabase
-          .from('app_settings')
-          .select('bep20_deposit_address')
-          .eq('id', 1)
-          .single();
-
-        if (settingsData?.bep20_deposit_address) {
-          setDepositWallet(settingsData.bep20_deposit_address);
-          setAdminWalletEdit(settingsData.bep20_deposit_address);
-        }
-
-        // Register or fetch user via RPC
-        const { data: userData, error } = await supabase.rpc('register_or_get_user', {
-          p_telegram_id: telegramId,
-          p_username: username,
-          p_first_name: firstName,
-          p_last_name: lastName,
-          p_ref_code: startParam,
-        });
-
-        if (error) throw error;
-        setUser(userData);
-        setWalletInput(userData.bep20_wallet || '');
-
-        await loadUserExtras(telegramId);
-        if (telegramId === ADMIN_TELEGRAM_ID) {
-          await loadAdminData();
-        }
-      } catch (err) {
-        console.error(err);
-        showToast(err.message || 'Failed to connect to server', 'error');
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    initApp();
   }, []);
 
   const loadUserExtras = async (telegramId) => {
@@ -197,7 +195,130 @@ export default function App() {
     setPromoList(promos || []);
   };
 
-  const isAdmin = Number(user?.telegram_id) === ADMIN_TELEGRAM_ID;
+  const authenticateTelegramUser = async (forceLogin = false) => {
+    setLoading(true);
+    try {
+      const tg = window.Telegram?.WebApp;
+      if (tg) {
+        tg.ready();
+        tg.expand();
+        tg.setHeaderColor('#F8F9FA');
+      }
+
+      if (forceLogin) {
+        localStorage.removeItem(SESSION_LOGGED_OUT_KEY);
+        localStorage.removeItem(TEST_PROFILE_KEY);
+        sessionStorage.removeItem(SESSION_LOGGED_OUT_KEY);
+        setLoggedOut(false);
+      } else {
+        const wasLoggedOut =
+          localStorage.getItem(SESSION_LOGGED_OUT_KEY) === 'true' ||
+          sessionStorage.getItem(SESSION_LOGGED_OUT_KEY) === 'true';
+        if (wasLoggedOut) {
+          setLoggedOut(true);
+          setUser(null);
+          setLoading(false);
+          return;
+        }
+      }
+
+      // Load deposit address from settings
+      const { data: settingsData } = await supabase
+        .from('app_settings')
+        .select('bep20_deposit_address')
+        .eq('id', 1)
+        .single();
+
+      if (settingsData?.bep20_deposit_address) {
+        setDepositWallet(settingsData.bep20_deposit_address);
+        setAdminWalletEdit(settingsData.bep20_deposit_address);
+      }
+
+      const savedTestKey = localStorage.getItem(TEST_PROFILE_KEY);
+      if (savedTestKey && TEST_PROFILES[savedTestKey]) {
+        const mockUser = TEST_PROFILES[savedTestKey];
+        setUser(mockUser);
+        setWalletInput(mockUser.bep20_wallet || '');
+        setReferrals([]);
+        setWithdrawalHistory([]);
+        setActiveTab('home');
+        setLoading(false);
+        return;
+      }
+
+      const tgUser = tg?.initDataUnsafe?.user;
+      const startParam =
+        tg?.initDataUnsafe?.start_param ||
+        new URLSearchParams(window.location.search).get('startapp') ||
+        '';
+
+      const initData = tg?.initData;
+      if (!initData || !tgUser?.id) {
+        window.location.replace('https://t.me/AllGoldenbot');
+        setLoading(false);
+        return;
+      }
+
+      const telegramId = tgUser.id;
+      const username = tgUser.username || '';
+      const firstName = tgUser.first_name || 'Member';
+      const lastName = tgUser.last_name || '';
+
+      const { data: userData, error } = await supabase.rpc('register_or_get_user', {
+        p_telegram_id: telegramId,
+        p_username: username,
+        p_first_name: firstName,
+        p_last_name: lastName,
+        p_ref_code: startParam,
+      });
+
+      if (error) throw error;
+      setUser(userData);
+      setWalletInput(userData.bep20_wallet || '');
+
+      await loadUserExtras(telegramId);
+      if (telegramId === ADMIN_TELEGRAM_ID) {
+        await loadAdminData();
+      }
+    } catch (err) {
+      console.error(err);
+      showToast(err.message || 'Failed to connect to server', 'error');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Initialize Telegram WebApp & Authenticate User
+  useEffect(() => {
+    authenticateTelegramUser(false);
+  }, []);
+
+  const handleLogout = () => {
+    localStorage.setItem(SESSION_LOGGED_OUT_KEY, 'true');
+    sessionStorage.setItem(SESSION_LOGGED_OUT_KEY, 'true');
+    localStorage.removeItem(TEST_PROFILE_KEY);
+    setLoggedOut(true);
+    setUser(null);
+    setActiveTab('home');
+    showToast('Session cleared. Choose a login option below.');
+  };
+
+  const handleLoginWithTestProfile = (profileKey) => {
+    const profile = TEST_PROFILES[profileKey];
+    if (!profile) return;
+    localStorage.removeItem(SESSION_LOGGED_OUT_KEY);
+    sessionStorage.removeItem(SESSION_LOGGED_OUT_KEY);
+    localStorage.setItem(TEST_PROFILE_KEY, profileKey);
+    setLoggedOut(false);
+    setUser(profile);
+    setWalletInput(profile.bep20_wallet || '');
+    setReferrals([]);
+    setWithdrawalHistory([]);
+    setActiveTab('home');
+    showToast(`Switched to ${profile.first_name}`);
+  };
+
+  const isAdmin = Number(user?.telegram_id) === ADMIN_TELEGRAM_ID && !user?.is_mock;
 
   // Check active plan & expiry
   const planStatus = useMemo(() => {
@@ -243,11 +364,53 @@ export default function App() {
   // Combined Available Balance
   const totalAvailableBalance = Number(user?.daily_balance || 0) + Number(user?.referral_balance || 0);
 
+  // Compress selected screenshot so it stays compact for submission
+  const handleProofFileChange = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) {
+      setProofImageData('');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        const maxWidth = 640;
+        const scale = Math.min(1, maxWidth / img.width);
+        canvas.width = Math.round(img.width * scale);
+        canvas.height = Math.round(img.height * scale);
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        setProofImageData(canvas.toDataURL('image/jpeg', 0.65));
+      };
+      img.src = String(reader.result || '');
+    };
+    reader.readAsDataURL(file);
+  };
+
   // Handlers
   const handleSubmitPlanPayment = async (e) => {
     e.preventDefault();
-    if (!txHashInput.trim() || txHashInput.trim().length < 12) {
-      return showToast('Enter a valid USDT BEP20 Transaction Hash (TxID)', 'error');
+    const cleanNote = txHashInput.trim();
+    if (!cleanNote && !proofImageData) {
+      return showToast('Enter a hash, screenshot note, or attach a screenshot', 'error');
+    }
+    if (cleanNote && cleanNote.length < 3 && !proofImageData) {
+      return showToast('Enter a bit more detail or attach a screenshot', 'error');
+    }
+    const proofPayload = proofImageData
+      ? cleanNote
+        ? `${proofImageData}|||${cleanNote}`
+        : proofImageData
+      : cleanNote;
+
+    if (user?.is_mock) {
+      showToast('Simulated proof submitted in test mode!');
+      setSelectedPlanModal(null);
+      setTxHashInput('');
+      setProofImageData('');
+      return;
     }
     setSubmittingPlan(true);
     try {
@@ -256,15 +419,16 @@ export default function App() {
         telegram_id: user.telegram_id,
         plan_type: selectedPlanModal,
         amount,
-        tx_hash: txHashInput.trim(),
+        tx_hash: proofPayload,
       });
       if (error) {
-        if (error.code === '23505') throw new Error('This Transaction Hash has already been submitted.');
+        if (error.code === '23505') throw new Error('This proof has already been submitted.');
         throw error;
       }
-      showToast('Payment submitted! Admin will verify and activate shortly.');
+      showToast('Proof submitted! Admin will confirm and activate shortly.');
       setSelectedPlanModal(null);
       setTxHashInput('');
+      setProofImageData('');
       if (isAdmin) await loadAdminData();
     } catch (err) {
       showToast(err.message, 'error');
@@ -281,6 +445,11 @@ export default function App() {
     }
     setCoinActionLoading(true);
     try {
+      if (user?.is_mock) {
+        setUser((prev) => ({ ...prev, mining_started_at: new Date().toISOString() }));
+        showToast('Test Golden Coin is rolling! (Test session)');
+        return;
+      }
       const { data, error } = await supabase.rpc('start_daily_mining', {
         p_telegram_id: user.telegram_id,
       });
@@ -297,6 +466,16 @@ export default function App() {
   const handleClaimCoin = async () => {
     setCoinActionLoading(true);
     try {
+      if (user?.is_mock) {
+        setUser((prev) => ({
+          ...prev,
+          mining_started_at: null,
+          daily_balance: Number(prev.daily_balance || 0) + planStatus.dailyRate,
+          total_earned: Number(prev.total_earned || 0) + planStatus.dailyRate,
+        }));
+        showToast(`Claimed +$${planStatus.dailyRate.toFixed(2)} Daily Reward! (Test session)`);
+        return;
+      }
       const { data, error } = await supabase.rpc('claim_daily_mining', {
         p_telegram_id: user.telegram_id,
       });
@@ -315,6 +494,16 @@ export default function App() {
     if (!promoInput.trim()) return;
     setRedeemingPromo(true);
     try {
+      if (user?.is_mock) {
+        setUser((prev) => ({
+          ...prev,
+          daily_balance: Number(prev.daily_balance || 0) + 1.0,
+          total_earned: Number(prev.total_earned || 0) + 1.0,
+        }));
+        setPromoInput('');
+        showToast('Test promo redeemed (+$1.00 in test session)!');
+        return;
+      }
       const { data, error } = await supabase.rpc('redeem_promo_code', {
         p_telegram_id: user.telegram_id,
         p_code: promoInput.trim(),
@@ -337,6 +526,11 @@ export default function App() {
     }
     setSavingWallet(true);
     try {
+      if (user?.is_mock) {
+        setUser((prev) => ({ ...prev, bep20_wallet: walletInput.trim() }));
+        showToast('Test BEP20 wallet saved!');
+        return;
+      }
       const { data, error } = await supabase
         .from('users')
         .update({ bep20_wallet: walletInput.trim() })
@@ -365,6 +559,11 @@ export default function App() {
     }
     setWithdrawing(true);
     try {
+      if (user?.is_mock) {
+        showToast('Test withdrawal validated! (Not sent to live database)');
+        setWithdrawAmount('');
+        return;
+      }
       const { data, error } = await supabase.rpc('request_withdrawal', {
         p_telegram_id: user.telegram_id,
         p_source: withdrawSource,
@@ -454,6 +653,17 @@ export default function App() {
     }
   };
 
+  const parseProofValue = (rawProof = '') => {
+    if (rawProof.startsWith('data:image/')) {
+      const parts = rawProof.split('|||');
+      return {
+        imageSrc: parts[0],
+        note: parts.slice(1).join('|||') || 'Screenshot attached',
+      };
+    }
+    return { imageSrc: '', note: rawProof };
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-[#F8F9FA] flex flex-col items-center justify-center p-6">
@@ -464,18 +674,57 @@ export default function App() {
       </div>
     );
   }
-  if (!user) {
+
+  // Logged-out / Session Switcher Screen
+  if (loggedOut || !user) {
     return (
-      <div className="min-h-screen bg-[#0F1E36] text-white flex flex-col items-center justify-center p-6 text-center">
-        <Crown className="w-14 h-14 text-amber-400 mb-3" />
-        <h2 className="text-xl font-extrabold">GOLDEN Mini App</h2>
-        <p className="text-xs text-slate-300 mt-1 mb-5">This app only works inside Telegram.</p>
-        <a
-          href="https://t.me/AllGoldenbot"
-          className="px-6 py-3.5 rounded-2xl bg-amber-400 text-slate-950 font-extrabold text-sm"
-        >
-          Open in Telegram
-        </a>
+      <div className="min-h-screen bg-[#0F1E36] text-white flex flex-col items-center justify-center p-6 max-w-md mx-auto">
+        <div className="w-16 h-16 rounded-full bg-amber-400/15 border border-amber-400/40 flex items-center justify-center mb-4">
+          <Crown className="w-9 h-9 text-amber-400" />
+        </div>
+        <h2 className="text-xl font-extrabold text-center">GOLDEN Mini App</h2>
+        <p className="text-xs text-slate-300 mt-1 mb-6 text-center">
+          {loggedOut
+            ? 'You logged out of your active session. Choose how you want to log back in:'
+            : 'Open inside Telegram to sign in automatically.'}
+        </p>
+
+        <div className="w-full space-y-3">
+          <button
+            onClick={() => authenticateTelegramUser(true)}
+            className="w-full py-3.5 rounded-2xl bg-gradient-to-r from-amber-500 to-yellow-400 text-slate-950 font-extrabold text-sm flex items-center justify-center gap-2 shadow-lg"
+          >
+            <LogIn className="w-4 h-4" />
+            Log In with Telegram Account
+          </button>
+
+          <div className="pt-3 border-t border-white/10 space-y-2">
+            <p className="text-[11px] uppercase tracking-wider text-amber-300 font-bold text-center">
+              Test User Profiles (UI Preview Only)
+            </p>
+            <button
+              onClick={() => handleLoginWithTestProfile('free')}
+              className="w-full py-2.5 px-4 rounded-xl bg-white/10 hover:bg-white/15 text-xs font-bold text-left flex justify-between items-center"
+            >
+              <span>Test Free / No Plan User</span>
+              <span className="text-[10px] bg-white/10 px-2 py-0.5 rounded-full">FREE</span>
+            </button>
+            <button
+              onClick={() => handleLoginWithTestProfile('normal')}
+              className="w-full py-2.5 px-4 rounded-xl bg-white/10 hover:bg-white/15 text-xs font-bold text-left flex justify-between items-center"
+            >
+              <span>Test Normal Plan User ($1/24h)</span>
+              <span className="text-[10px] bg-amber-400/20 text-amber-300 px-2 py-0.5 rounded-full">NORMAL</span>
+            </button>
+            <button
+              onClick={() => handleLoginWithTestProfile('premium')}
+              className="w-full py-2.5 px-4 rounded-xl bg-white/10 hover:bg-white/15 text-xs font-bold text-left flex justify-between items-center"
+            >
+              <span>Test Premium User ($2.50/24h)</span>
+              <span className="text-[10px] bg-amber-400 text-slate-950 px-2 py-0.5 rounded-full font-extrabold">PREMIUM</span>
+            </button>
+          </div>
+        </div>
       </div>
     );
   }
@@ -499,14 +748,25 @@ export default function App() {
 
       {/* Top Mini App Header */}
       <header className="sticky top-0 z-30 bg-white/95 backdrop-blur border-b border-slate-100 px-4 py-3 flex items-center justify-between">
-        <div className="w-12" />
+        <button
+          onClick={handleLogout}
+          title="Log Out"
+          className="px-2.5 py-1 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] font-bold flex items-center gap-1"
+        >
+          <LogOut className="w-3.5 h-3.5" />
+          <span>Log Out</span>
+        </button>
+
         <div className="text-center">
           <h1 className="font-extrabold text-base tracking-tight text-slate-900 flex items-center justify-center gap-1">
             GOLDEN <Crown className="w-4 h-4 text-amber-500 fill-amber-400" />
           </h1>
-          <p className="text-[11px] text-slate-400 font-medium leading-none">mini app</p>
+          <p className="text-[11px] text-slate-400 font-medium leading-none">
+            {user?.is_mock ? 'test session' : 'mini app'}
+          </p>
         </div>
-        <div className="w-12 flex justify-end">
+
+        <div className="flex justify-end">
           <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 uppercase">
             {planStatus.active ? planStatus.plan : 'Free'}
           </span>
@@ -615,6 +875,7 @@ export default function App() {
                     if (isAdmin) {
                       showToast('Normal plan is permanently free for Admin!');
                     } else {
+                      setProofImageData('');
                       setSelectedPlanModal('normal');
                     }
                   }}
@@ -648,7 +909,10 @@ export default function App() {
                 </div>
 
                 <button
-                  onClick={() => setSelectedPlanModal('premium')}
+                  onClick={() => {
+                    setProofImageData('');
+                    setSelectedPlanModal('premium');
+                  }}
                   className="mt-3 w-full py-2 rounded-xl bg-gradient-to-r from-amber-500 to-yellow-400 text-slate-950 text-xs font-extrabold shadow-sm"
                 >
                   {planStatus.active && planStatus.plan === 'premium' ? 'Active / Renew' : 'Go Premium'}
@@ -688,11 +952,21 @@ export default function App() {
             </button>
           </div>
 
-          {/* Have a promo code? Card */}
-          <div className="bg-white rounded-3xl p-4 shadow-sm border border-slate-100">
-            <div className="flex items-center gap-2 mb-3">
-              <Gift className="w-5 h-5 text-amber-500" />
-              <h3 className="font-extrabold text-sm text-slate-900">Have a promo code?</h3>
+          {/* Have a promo code? Card + Announcements Channel Button */}
+          <div className="bg-white rounded-3xl p-4 shadow-sm border border-slate-100 space-y-3">
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <Gift className="w-5 h-5 text-amber-500" />
+                <h3 className="font-extrabold text-sm text-slate-900">Have a promo code?</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => openTelegramUrl(ANNOUNCEMENTS_CHANNEL_URL)}
+                className="px-3 py-1.5 rounded-xl bg-amber-100 hover:bg-amber-200 text-amber-900 text-[11px] font-extrabold flex items-center gap-1 transition"
+              >
+                <Megaphone className="w-3.5 h-3.5 text-amber-700" />
+                <span>Announcements</span>
+              </button>
             </div>
             <form onSubmit={handleRedeemPromo} className="flex gap-2">
               <input
@@ -876,11 +1150,7 @@ export default function App() {
                   const shareUrl = `https://t.me/share/url?url=${encodeURIComponent(
                     referralLink
                   )}&text=${encodeURIComponent('Join GOLDEN and earn daily USDT rewards!')}`;
-                  if (window.Telegram?.WebApp?.openTelegramLink) {
-                    window.Telegram.WebApp.openTelegramLink(shareUrl);
-                  } else {
-                    window.open(shareUrl, '_blank');
-                  }
+                  openTelegramUrl(shareUrl);
                 }}
                 className="py-3 rounded-2xl bg-amber-500 text-slate-950 font-extrabold text-xs flex items-center justify-center gap-1.5 shadow-sm"
               >
@@ -888,6 +1158,15 @@ export default function App() {
                 Share
               </button>
             </div>
+
+            <button
+              type="button"
+              onClick={() => openTelegramUrl(ANNOUNCEMENTS_CHANNEL_URL)}
+              className="w-full py-2.5 rounded-2xl bg-slate-900 text-amber-300 font-extrabold text-xs flex items-center justify-center gap-1.5"
+            >
+              <Megaphone className="w-4 h-4" />
+              <span>Join Official Announcements & Promo Codes</span>
+            </button>
           </div>
 
           {/* 3-Column Referral Stats */}
@@ -1151,45 +1430,56 @@ export default function App() {
                   No pending plan deposits.
                 </div>
               ) : (
-                pendingPayments.map((pay) => (
-                  <div key={pay.id} className="bg-white rounded-3xl p-4 shadow-sm border border-slate-100 space-y-2.5">
-                    <div className="flex justify-between items-start">
-                      <div>
-                        <p className="text-xs font-extrabold text-slate-900">
-                          {pay.users?.first_name || 'User'} (ID: {pay.telegram_id})
-                        </p>
-                        <p className="text-xs font-bold text-amber-600 uppercase mt-0.5">
-                          {pay.plan_type} Plan — ${Number(pay.amount).toFixed(2)} USDT
-                        </p>
+                pendingPayments.map((pay) => {
+                  const parsedProof = parseProofValue(pay.tx_hash);
+                  return (
+                    <div key={pay.id} className="bg-white rounded-3xl p-4 shadow-sm border border-slate-100 space-y-2.5">
+                      <div className="flex justify-between items-start">
+                        <div>
+                          <p className="text-xs font-extrabold text-slate-900">
+                            {pay.users?.first_name || 'User'} (ID: {pay.telegram_id})
+                          </p>
+                          <p className="text-xs font-bold text-amber-600 uppercase mt-0.5">
+                            {pay.plan_type} Plan — ${Number(pay.amount).toFixed(2)} USDT
+                          </p>
+                        </div>
+                        <span className="text-[10px] bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full font-bold">
+                          Pending
+                        </span>
                       </div>
-                      <span className="text-[10px] bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full font-bold">
-                        Pending
-                      </span>
-                    </div>
 
-                    <div className="bg-slate-50 p-2.5 rounded-xl flex items-center justify-between gap-2">
-                      <span className="text-[10px] font-mono text-slate-600 break-all">{pay.tx_hash}</span>
-                      <button onClick={() => copyText(pay.tx_hash, pay.id)} className="shrink-0 text-slate-500">
-                        <Copy className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
+                      {parsedProof.imageSrc && (
+                        <img
+                          src={parsedProof.imageSrc}
+                          alt="Payment screenshot proof"
+                          className="w-full max-h-56 object-contain rounded-xl bg-slate-100 border border-slate-200"
+                        />
+                      )}
 
-                    <div className="grid grid-cols-2 gap-2 pt-1">
-                      <button
-                        onClick={() => handleAdminPayment(pay.id, 'approved')}
-                        className="py-2.5 rounded-xl bg-emerald-600 text-white font-bold text-xs flex items-center justify-center gap-1"
-                      >
-                        <CheckCircle2 className="w-3.5 h-3.5" /> Approve (+$0.70 Ref)
-                      </button>
-                      <button
-                        onClick={() => handleAdminPayment(pay.id, 'rejected')}
-                        className="py-2.5 rounded-xl bg-red-600 text-white font-bold text-xs flex items-center justify-center gap-1"
-                      >
-                        <XCircle className="w-3.5 h-3.5" /> Reject
-                      </button>
+                      <div className="bg-slate-50 p-2.5 rounded-xl flex items-center justify-between gap-2">
+                        <span className="text-[10px] font-mono text-slate-600 break-all">{parsedProof.note}</span>
+                        <button onClick={() => copyText(parsedProof.note, pay.id)} className="shrink-0 text-slate-500">
+                          <Copy className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2 pt-1">
+                        <button
+                          onClick={() => handleAdminPayment(pay.id, 'approved')}
+                          className="py-2.5 rounded-xl bg-emerald-600 text-white font-bold text-xs flex items-center justify-center gap-1"
+                        >
+                          <CheckCircle2 className="w-3.5 h-3.5" /> Approve (+$0.70 Ref)
+                        </button>
+                        <button
+                          onClick={() => handleAdminPayment(pay.id, 'rejected')}
+                          className="py-2.5 rounded-xl bg-red-600 text-white font-bold text-xs flex items-center justify-center gap-1"
+                        >
+                          <XCircle className="w-3.5 h-3.5" /> Reject
+                        </button>
+                      </div>
                     </div>
-                  </div>
-                ))
+                  );
+                })
               )}
             </div>
           )}
@@ -1322,7 +1612,10 @@ export default function App() {
                 Activate {selectedPlanModal} Plan
               </h3>
               <button
-                onClick={() => setSelectedPlanModal(null)}
+                onClick={() => {
+                  setSelectedPlanModal(null);
+                  setProofImageData('');
+                }}
                 className="text-xs font-bold text-slate-400 px-2 py-1"
               >
                 Close
@@ -1366,15 +1659,40 @@ export default function App() {
 
             <form onSubmit={handleSubmitPlanPayment} className="space-y-3">
               <div>
-                <label className="text-[11px] font-bold text-slate-500">Paste Transaction Hash (TxID)</label>
+                <label className="text-[11px] font-bold text-slate-500">
+                  Transaction Hash or Screenshot Note / Reference
+                </label>
                 <input
                   type="text"
-                  required
                   value={txHashInput}
                   onChange={(e) => setTxHashInput(e.target.value)}
-                  placeholder="0x..."
-                  className="mt-1 w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 text-xs font-mono outline-none focus:border-amber-500"
+                  placeholder="0x... hash or e.g. Paid $1 USDT, screenshot ready"
+                  className="mt-1 w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 text-xs outline-none focus:border-amber-500"
                 />
+              </div>
+
+              <div>
+                <label className="text-[11px] font-bold text-slate-500 block mb-1">
+                  Attach Screenshot Proof (Optional)
+                </label>
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={handleProofFileChange}
+                  className="w-full text-[11px] text-slate-600 file:mr-3 file:py-2 file:px-3 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-amber-100 file:text-amber-900"
+                />
+                {proofImageData && (
+                  <div className="mt-2 flex items-center justify-between bg-slate-50 p-2 rounded-xl border border-slate-200">
+                    <span className="text-[11px] font-bold text-emerald-700">Screenshot attached</span>
+                    <button
+                      type="button"
+                      onClick={() => setProofImageData('')}
+                      className="text-[11px] font-bold text-red-600"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                )}
               </div>
 
               <button
@@ -1382,7 +1700,7 @@ export default function App() {
                 disabled={submittingPlan}
                 className="w-full py-3.5 rounded-2xl bg-gradient-to-r from-amber-500 to-yellow-400 text-slate-950 font-extrabold text-xs shadow-md"
               >
-                {submittingPlan ? 'Submitting...' : 'I Have Paid — Submit TxID'}
+                {submittingPlan ? 'Submitting...' : 'I Have Paid — Submit Proof'}
               </button>
             </form>
           </div>
