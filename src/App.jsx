@@ -106,7 +106,7 @@ export default function App() {
         const tgUser = tg?.initDataUnsafe?.user;
         const startParam = tg?.initDataUnsafe?.start_param || new URLSearchParams(window.location.search).get('startapp') || '';
 
-                const initData = tg?.initData;
+        const initData = tg?.initData;
         if (!initData || !tgUser?.id) {
           window.location.replace('https://t.me/AllGoldenbot');
           setLoading(false);
@@ -117,7 +117,6 @@ export default function App() {
         const username = tgUser.username || '';
         const firstName = tgUser.first_name || 'Member';
         const lastName = tgUser.last_name || '';
-
 
         // Load deposit address from settings
         const { data: settingsData } = await supabase
@@ -396,7 +395,6 @@ export default function App() {
       if (error) throw error;
       showToast(`Payment ${action}!`);
       await loadAdminData();
-      // Refresh admin's own profile in case admin approved their own Premium upgrade
       const { data: refreshed } = await supabase.from('users').select('*').eq('telegram_id', ADMIN_TELEGRAM_ID).single();
       if (refreshed) setUser(refreshed);
     } catch (err) {
@@ -487,7 +485,7 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-[#F6F7F9] text-slate-900 pb-24 max-w-md mx-auto relative font-sans">
-      {/* Custom Coin Spin CSS */}
+      {/* Custom Coin Spin CSS + Hide Floating Netlify Badge */}
       <style>{`
         @keyframes coinSpin3D {
           0% { transform: rotateY(0deg); }
@@ -496,6 +494,12 @@ export default function App() {
         .animate-coin-spin {
           animation: coinSpin3D 2.4s linear infinite;
           transform-style: preserve-3d;
+        }
+        [class*="netlify"],
+        [id*="netlify"],
+        a[href*="netlify.com"] {
+          display: none !important;
+          pointer-events: none !important;
         }
       `}</style>
 
@@ -545,7 +549,7 @@ export default function App() {
             </div>
           </div>
 
-          {/* Main Balance Card (Navy & Gold Gradient matching GOLDEN branding) */}
+          {/* Main Balance Card */}
           <div className="rounded-3xl bg-gradient-to-br from-[#0F1E36] via-[#13294B] to-[#6B4E16] p-5 text-white shadow-xl relative overflow-hidden">
             <div className="absolute -right-8 -top-8 w-36 h-36 rounded-full bg-amber-400/10 pointer-events-none" />
             <p className="text-xs text-slate-300 font-medium">Available balance</p>
@@ -576,7 +580,7 @@ export default function App() {
             </button>
           </div>
 
-          {/* Membership Plan Selector Card (Replaces "Do tasks" from reference) */}
+          {/* Membership Plan Selector Card */}
           <div className="bg-white rounded-3xl p-4 shadow-sm border border-slate-100">
             <div className="flex items-center justify-between mb-3">
               <div>
