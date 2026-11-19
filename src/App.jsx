@@ -484,8 +484,8 @@ export default function App() {
   const qualifiedCount = referrals.filter((r) => r.referral_qualified).length;
 
   return (
-    <div className="min-h-screen bg-[#F6F7F9] text-slate-900 pb-24 max-w-md mx-auto relative font-sans">
-      {/* Custom Coin Spin CSS + Hide Floating Netlify Badge */}
+    <div className="min-h-screen bg-[#F6F7F9] text-slate-900 pb-36 max-w-md mx-auto relative font-sans">
+      {/* Custom Coin Spin CSS */}
       <style>{`
         @keyframes coinSpin3D {
           0% { transform: rotateY(0deg); }
@@ -494,12 +494,6 @@ export default function App() {
         .animate-coin-spin {
           animation: coinSpin3D 2.4s linear infinite;
           transform-style: preserve-3d;
-        }
-        [class*="netlify"],
-        [id*="netlify"],
-        a[href*="netlify.com"] {
-          display: none !important;
-          pointer-events: none !important;
         }
       `}</style>
 
@@ -1399,7 +1393,7 @@ export default function App() {
           BOTTOM NAVIGATION BAR
           ("More" 3-line Admin tab ONLY renders for ID 9278551040)
          ========================================== */}
-      <nav className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-md bg-white/95 backdrop-blur border-t border-slate-100 px-2 py-2 flex items-center justify-around z-40">
+      <nav className="fixed bottom-12 left-1/2 -translate-x-1/2 w-full max-w-md bg-white/95 backdrop-blur border-t border-slate-100 px-2 pb-2 pt-2 flex items-center justify-around z-40">
         <button
           onClick={() => setActiveTab('home')}
           className={`flex flex-col items-center gap-1 py-1 px-3 rounded-xl transition ${
